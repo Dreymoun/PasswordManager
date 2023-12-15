@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using PasswordManager.DLL;
@@ -15,59 +17,181 @@ namespace PasswordManager.BLL
         public PasswordManagerBLL(PasswordManagerDLL dataLayer)
         {
             _dataLayer = dataLayer;
+
+        }
+
+        private bool CheckMasterPassword(string inputPassword)
+        {
+            return _masterPassword == inputPassword;
         }
 
         public void SetMasterPassword(string password)
         {
-            // Хранение мастер-пароля, в будущем, с шифрованием
             _masterPassword = password;
-        }
-        public void DeleteMasterPassword()
-        {
-            // Очистка мастер-пароля
-            _masterPassword = null;
-
+            Console.WriteLine("Мастер-пароль успешно создан");
         }
 
-        public void AddPasswordEntry(string website, string username, string password)
+        public void DeleteMasterPassword(string inputPassword)
         {
-            // Шифрование пароля
-            string encryptedPassword = EncryptPassword(password, _masterPassword);
-
-            // Создание и сохранение новой записи
-            var entry = new PasswordEntry(website, username, encryptedPassword);
-            _dataLayer.SaveEntry(entry);
-        }
-
-        public PasswordEntry GetPasswordEntry(string website, string username)
-        {
-            // Получение и дешифровка записи
-            var entry = _dataLayer.GetEntry(website, username);
-            if (entry != null)
+            if (CheckMasterPassword(inputPassword))
             {
-                entry.EncryptedPassword = DecryptPassword(entry.EncryptedPassword, _masterPassword);
+                _masterPassword = null;
+                Console.WriteLine("Мастер-пароль успешно удален.");
             }
-            return entry;
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+            }
         }
 
-        public List<PasswordEntry> SearchEntries(string query)
+        public void AddPasswordEntry(string website, string username, string password, string inputPassword)
         {
-            // Поиск записей по запросу
-            var allEntries = _dataLayer.GetAllEntries();
-            return allEntries.Where(e => e.Website.Contains(query) || e.Username.Contains(query)).ToList();
+            if (CheckMasterPassword(inputPassword))
+            {
+                string encryptedPassword = EncryptPassword(password, 4);
+                var entry = new PasswordEntry(website, username, encryptedPassword);
+                _dataLayer.SaveEntry(entry);
+                Console.WriteLine("Запись успешно добавлена");
+            }
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+            }
         }
 
-        private string EncryptPassword(string password, string masterPassword)
+        public PasswordEntry GetPasswordEntry(string website, string username, string inputPassword)
         {
-            // Реализация шифрования пароля
-            // Примечание: это должна быть более сложная логика, чем просто XOR
-            return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(password));
+            if (CheckMasterPassword(inputPassword))
+            {
+                var entry = _dataLayer.GetEntry(website, username);
+                if (entry != null)
+                {
+                    entry.DecryptedPassword = DecryptPassword(entry.EncryptedPassword, 4);
+                    return entry;
+                }
+            }
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+            }
+
+            return null;
         }
 
-        private string DecryptPassword(string encryptedPassword, string masterPassword)
+        public List<PasswordEntry> SearchEntries(string query, string inputPassword)
         {
-            // Реализация дешифровки пароля
-            return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encryptedPassword));
+            if (CheckMasterPassword(inputPassword))
+            {
+                var allEntries = _dataLayer.GetAllEntries();
+                return allEntries.Where(e => e.Website.Contains(query) || e.Username.Contains(query)).ToList();
+            }
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+                return new List<PasswordEntry>();
+            }
         }
+
+        public IEnumerable<PasswordEntry> GetAllPasswordEntries(string inputPassword)
+        {
+            if (CheckMasterPassword(inputPassword))
+            {
+                var encryptedEntries = _dataLayer.GetAllEntries();
+                var decryptedEntries = new List<PasswordEntry>();
+
+                foreach (var entry in encryptedEntries)
+                {
+                    string decryptedPassword = DecryptPassword(entry.EncryptedPassword, 4);
+                    decryptedEntries.Add(new PasswordEntry(entry.Website, entry.Username, entry.EncryptedPassword)
+                    {
+                        DecryptedPassword = decryptedPassword
+                    });
+                }
+
+                return decryptedEntries;
+            }
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+                return new List<PasswordEntry>();
+            }
+        }
+
+        public bool DeletePasswordEntry(string website, string username, string inputPassword)
+        {
+            if (CheckMasterPassword(inputPassword))
+            {
+                var entriesToDelete = _dataLayer.GetEntries(e => e.Website == website && e.Username == username).ToList();
+                if (entriesToDelete.Any())
+                {
+                    foreach (var entry in entriesToDelete)
+                    {
+                        _dataLayer.DeleteEntry(entry.Id);
+                    }
+                    return true;
+                }
+                else
+                {
+                    return false; // Запись не найдена
+                }
+            }
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+                return false;
+            }
+        }
+
+        public bool ChangePassword(string website, string username, string oldPassword, string newPassword, string inputPassword)
+        {
+            if (CheckMasterPassword(inputPassword))
+            {
+                var entry = GetPasswordEntry(website, username, inputPassword); // Теперь передаем inputPassword
+                if (entry != null)
+                {
+                    string decryptedOldPassword = DecryptPassword(entry.EncryptedPassword, 4);
+                    if (decryptedOldPassword == oldPassword)
+                    {
+                        string encryptedNewPassword = EncryptPassword(newPassword, 4);
+                        entry.EncryptedPassword = encryptedNewPassword;
+                        _dataLayer.SaveEntry(entry);
+                        return true;
+                    }
+                }
+                return false;
+            }
+            else
+            {
+                Console.WriteLine("Неверный мастер-пароль");
+                return false;
+            }
+        }
+
+        private string EncryptPassword(string password, int key)
+        {
+            char[] buffer = password.ToCharArray();
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                // Сдвигаем каждый символ на 'key' позиций вперед
+                char letter = buffer[i];
+                letter = (char)(letter + key);
+                buffer[i] = letter;
+            }
+            return new string(buffer);
+        }
+
+        private string DecryptPassword(string encryptedPassword, int key)
+        {
+            char[] buffer = encryptedPassword.ToCharArray();
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                // Сдвигаем каждый символ на 'key' позиций назад
+                char letter = buffer[i];
+                letter = (char)(letter - key);
+                buffer[i] = letter;
+            }
+            return new string(buffer);
+        }
+
     }
 }
