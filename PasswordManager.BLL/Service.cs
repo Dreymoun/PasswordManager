@@ -5,32 +5,38 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using PasswordManager.DLL;
+using PasswordManager.DAL;
 
 namespace PasswordManager.BLL
 {
     public class PasswordManagerBLL
     {
-        private PasswordManagerDLL _dataLayer;
+        // Поле для хранения ссылки на уровень доступа к данным
+        private PasswordManagerDAL _dataLayer;
+
+        // Поле для хранения мастер-пароля
         private string _masterPassword;
 
-        public PasswordManagerBLL(PasswordManagerDLL dataLayer)
+        // Конструктор класса, инициализирующий уровень доступа к данным
+        public PasswordManagerBLL(PasswordManagerDAL dataLayer)
         {
             _dataLayer = dataLayer;
-
         }
 
+        // Метод для проверки правильности мастер-пароля
         private bool CheckMasterPassword(string inputPassword)
         {
             return _masterPassword == inputPassword;
         }
 
+        // Метод для установки мастер-пароля
         public void SetMasterPassword(string password)
         {
             _masterPassword = password;
             Console.WriteLine("Мастер-пароль успешно создан");
         }
 
+        // Метод для удаления мастер-пароля
         public void DeleteMasterPassword(string inputPassword)
         {
             if (CheckMasterPassword(inputPassword))
@@ -44,154 +50,221 @@ namespace PasswordManager.BLL
             }
         }
 
-        public void AddPasswordEntry(string website, string username, string password, string inputPassword)
+        // Метод для добавления новой записи пароля
+        public void AddPassword(string website, string username, string password, string inputPassword)
         {
-            if (CheckMasterPassword(inputPassword))
+            try
             {
-                string encryptedPassword = EncryptPassword(password, 4);
-                var entry = new PasswordEntry(website, username, encryptedPassword);
-                _dataLayer.SaveEntry(entry);
-                Console.WriteLine("Запись успешно добавлена");
-            }
-            else
-            {
-                Console.WriteLine("Неверный мастер-пароль");
-            }
-        }
-
-        public PasswordEntry GetPasswordEntry(string website, string username, string inputPassword)
-        {
-            if (CheckMasterPassword(inputPassword))
-            {
-                var entry = _dataLayer.GetEntry(website, username);
-                if (entry != null)
+                if (CheckMasterPassword(inputPassword))
                 {
-                    entry.DecryptedPassword = DecryptPassword(entry.EncryptedPassword, 4);
-                    return entry;
-                }
-            }
-            else
-            {
-                Console.WriteLine("Неверный мастер-пароль");
-            }
-
-            return null;
-        }
-
-        public List<PasswordEntry> SearchEntries(string query, string inputPassword)
-        {
-            if (CheckMasterPassword(inputPassword))
-            {
-                var allEntries = _dataLayer.GetAllEntries();
-                return allEntries.Where(e => e.Website.Contains(query) || e.Username.Contains(query)).ToList();
-            }
-            else
-            {
-                Console.WriteLine("Неверный мастер-пароль");
-                return new List<PasswordEntry>();
-            }
-        }
-
-        public IEnumerable<PasswordEntry> GetAllPasswordEntries(string inputPassword)
-        {
-            if (CheckMasterPassword(inputPassword))
-            {
-                var encryptedEntries = _dataLayer.GetAllEntries();
-                var decryptedEntries = new List<PasswordEntry>();
-
-                foreach (var entry in encryptedEntries)
-                {
-                    string decryptedPassword = DecryptPassword(entry.EncryptedPassword, 4);
-                    decryptedEntries.Add(new PasswordEntry(entry.Website, entry.Username, entry.EncryptedPassword)
-                    {
-                        DecryptedPassword = decryptedPassword
-                    });
-                }
-
-                return decryptedEntries;
-            }
-            else
-            {
-                Console.WriteLine("Неверный мастер-пароль");
-                return new List<PasswordEntry>();
-            }
-        }
-
-        public bool DeletePasswordEntry(string website, string username, string inputPassword)
-        {
-            if (CheckMasterPassword(inputPassword))
-            {
-                var entriesToDelete = _dataLayer.GetEntries(e => e.Website == website && e.Username == username).ToList();
-                if (entriesToDelete.Any())
-                {
-                    foreach (var entry in entriesToDelete)
-                    {
-                        _dataLayer.DeleteEntry(entry.Id);
-                    }
-                    return true;
+                    string encryptedPassword = EncryptPassword(password, 4);
+                    var entry = new PasswordEntry(website, username, encryptedPassword);
+                    _dataLayer.SavePassword(entry);
+                    Console.WriteLine("Запись успешно добавлена");
                 }
                 else
                 {
-                    return false; // Запись не найдена
+                    Console.WriteLine("Неверный мастер-пароль");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("Неверный мастер-пароль");
-                return false;
+                Console.WriteLine("Ошибка при добавлении записи: " + ex.Message);
             }
         }
 
-        public bool ChangePassword(string website, string username, string oldPassword, string newPassword, string inputPassword)
+        // Метод для получения записи пароля по веб-сайту и имени пользователя
+        public PasswordEntry GetPasswordEntry(string website, string username, string inputPassword)
         {
-            if (CheckMasterPassword(inputPassword))
+            try
             {
-                var entry = GetPasswordEntry(website, username, inputPassword); // Теперь передаем inputPassword
-                if (entry != null)
+                if (CheckMasterPassword(inputPassword))
                 {
-                    string decryptedOldPassword = DecryptPassword(entry.EncryptedPassword, 4);
-                    if (decryptedOldPassword == oldPassword)
+                    var entry = _dataLayer.GetPassword(website, username);
+                    if (entry != null)
                     {
-                        string encryptedNewPassword = EncryptPassword(newPassword, 4);
-                        entry.EncryptedPassword = encryptedNewPassword;
-                        _dataLayer.SaveEntry(entry);
-                        return true;
+                        entry.DecryptedPassword = DecryptPassword(entry.EncryptedPassword, 4);
+                        return entry;
                     }
                 }
-                return false;
+                else
+                {
+                    Console.WriteLine("Неверный мастер-пароль");
+                }
+                return null;
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("Неверный мастер-пароль");
+                Console.WriteLine("Ошибка при получении записи: " + ex.Message);
+                return null;
+            }
+        }
+
+        // Метод для поиска записей паролей по запросу
+        public List<PasswordEntry> SearchEntries(string query, string inputPassword)
+        {
+            try
+            {
+                if (CheckMasterPassword(inputPassword))
+                {
+                    var allEntries = _dataLayer.GetAllPasswords();
+                    return allEntries.Where(e => e.Website.Contains(query) || e.Username.Contains(query)).ToList();
+                }
+                else
+                {
+                    Console.WriteLine("Неверный мастер-пароль");
+                    return new List<PasswordEntry>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при поиске записей: " + ex.Message);
+                return new List<PasswordEntry>();
+            }
+        }
+
+        // Метод для получения всех записей паролей
+        public IEnumerable<PasswordEntry> GetAllPasswordEntries(string inputPassword)
+        {
+            try
+            {
+                if (CheckMasterPassword(inputPassword))
+                {
+                    var encryptedEntries = _dataLayer.GetAllPasswords();
+                    var decryptedEntries = new List<PasswordEntry>();
+
+                    foreach (var entry in encryptedEntries)
+                    {
+                        string decryptedPassword = DecryptPassword(entry.EncryptedPassword, 4);
+                        decryptedEntries.Add(new PasswordEntry(entry.Website, entry.Username, entry.EncryptedPassword)
+                        {
+                            DecryptedPassword = decryptedPassword
+                        });
+                    }
+
+                    return decryptedEntries;
+                }
+                else
+                {
+                    Console.WriteLine("Неверный мастер-пароль");
+                    return new List<PasswordEntry>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при получении всех записей: " + ex.Message);
+                return new List<PasswordEntry>();
+            }
+        }
+
+        // Метод для удаления записи пароля
+        public bool DeletePasswordEntry(string website, string username, string inputPassword)
+        {
+            try
+            {
+                if (CheckMasterPassword(inputPassword))
+                {
+                    var entriesToDelete = _dataLayer.GetPasswords(e => e.Website == website && e.Username == username).ToList();
+                    if (entriesToDelete.Any())
+                    {
+                        foreach (var entry in entriesToDelete)
+                        {
+                            _dataLayer.DeletePassword(entry.Id);
+                        }
+                        return true;
+                    }
+                    else
+                    {
+                        return false; // Запись не найдена
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Неверный мастер-пароль");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при удалении записи: " + ex.Message);
                 return false;
             }
         }
 
+        // Метод для изменения пароля в записи
+        public bool ChangePassword(string website, string username, string oldPassword, string newPassword, string inputPassword)
+        {
+            try
+            {
+                if (CheckMasterPassword(inputPassword))
+                {
+                    var entry = GetPasswordEntry(website, username, inputPassword);
+                    if (entry != null)
+                    {
+                        string decryptedOldPassword = DecryptPassword(entry.EncryptedPassword, 4);
+                        if (decryptedOldPassword == oldPassword)
+                        {
+                            string encryptedNewPassword = EncryptPassword(newPassword, 4);
+                            entry.EncryptedPassword = encryptedNewPassword;
+                            _dataLayer.SavePassword(entry);
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                else
+                {
+                    Console.WriteLine("Неверный мастер-пароль");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при изменении пароля: " + ex.Message);
+                return false;
+            }
+        }
+
+        // Метод для шифрования пароля
         private string EncryptPassword(string password, int key)
         {
-            char[] buffer = password.ToCharArray();
-            for (int i = 0; i < buffer.Length; i++)
+            try
             {
-                // Сдвигаем каждый символ на 'key' позиций вперед
-                char letter = buffer[i];
-                letter = (char)(letter + key);
-                buffer[i] = letter;
+                char[] buffer = password.ToCharArray();
+                for (int i = 0; i < buffer.Length; i++)
+                {
+                    char letter = buffer[i];
+                    letter = (char)(letter + key); // Простое шифрование путем сдвига символов
+                    buffer[i] = letter;
+                }
+                return new string(buffer);
             }
-            return new string(buffer);
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при шифровании: " + ex.Message);
+                return null;
+            }
         }
 
+        // Метод для дешифрования пароля
         private string DecryptPassword(string encryptedPassword, int key)
         {
-            char[] buffer = encryptedPassword.ToCharArray();
-            for (int i = 0; i < buffer.Length; i++)
+            try
             {
-                // Сдвигаем каждый символ на 'key' позиций назад
-                char letter = buffer[i];
-                letter = (char)(letter - key);
-                buffer[i] = letter;
+                char[] buffer = encryptedPassword.ToCharArray();
+                for (int i = 0; i < buffer.Length; i++)
+                {
+                    char letter = buffer[i];
+                    letter = (char)(letter - key); // Простое дешифрование путем обратного сдвига символов
+                    buffer[i] = letter;
+                }
+                return new string(buffer);
             }
-            return new string(buffer);
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при дешифровании: " + ex.Message);
+                return null;
+            }
         }
-
     }
 }
